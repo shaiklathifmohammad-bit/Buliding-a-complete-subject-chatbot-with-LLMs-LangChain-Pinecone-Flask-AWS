@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>SDU SubjectBot</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Main UI styles -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='chat.css') }}">
+</head>
+<body>
+<div class="app-root">
+    <!-- ===== Top header (very simple, clean) ===== -->
+    <header class="top-bar">
+        <div class="top-left">
+            <div class="bot-avatar-circle">S</div>
+            <div class="bot-meta">
+                <div class="bot-name">SDU SubjectBot</div>
+                <div class="bot-subtitle">Your subject assistant</div>
+            </div>
+        </div>
+        <div class="top-right">
+            <span class="status-dot"></span>
+            <span class="status-text">Connected</span>
+        </div>
+    </header>
+
+    <!-- ===== Main chat card ===== -->
+    <main class="chat-shell">
+        <section class="chat-window">
+            <!-- Scrollable messages area -->
+            <div class="chat-body" id="chat-body">
+                <!-- Initial assistant message -->
+                <div class="msg-row bot">
+                    <div class="msg-avatar">S</div>
+                    <div class="msg-bubble">
+                        Hi! I’m SDU SubjectBot.
+                        Ask me anything about your subjects or the PDFs loaded into this app.
+                        <div class="msg-meta">Assistant · ready</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input area -->
+            <form class="chat-input-area" id="chat-form">
+                <div class="input-row">
+                    <textarea
+                        id="user-input"
+                        class="chat-input"
+                        placeholder="Type your message…"
+                        rows="1"
+                        autocomplete="off"
+                    ></textarea>
+
+                    <button type="submit" class="send-btn" id="send-btn">
+                        <span>Send</span>
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M5 12L4 4l16 8-16 8 1-8h9"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  stroke-width="1.7"
+                                  stroke-linecap="round"
+                                  stroke-linejoin="round" />
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="input-hint">
+                    <span>Enter ↵ to send · Shift+Enter for new line</span>
+                    <span id="status-text">Ready</span>
+                </div>
+            </form>
+        </section>
+    </main>
+</div>
+
+<!-- ===== Front-end logic (same endpoint: /chat) ===== -->
+<script>
+    const CHAT_ENDPOINT = "/chat";
+
+    const chatBody   = document.getElementById("chat-body");
+    const chatForm   = document.getElementById("chat-form");
+    const userInput  = document.getElementById("user-input");
+    const sendBtn    = document.getElementById("send-btn");
+    const statusText = document.getElementById("status-text");
+
+    // Auto-resize textarea
+    function autoResize() {
+        userInput.style.height = "auto";
+        userInput.style.height = Math.min(userInput.scrollHeight, 120) + "px";
+    }
+    userInput.addEventListener("input", autoResize);
+
+    // Enter to send, Shift+Enter for newline
+    userInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            chatForm.requestSubmit();
+        }
+    });
+
+    function appendMessage(role, text, metaText) {
+        const row = document.createElement("div");
+        row.className = "msg-row " + (role === "user" ? "user" : "bot");
+
+        if (role === "bot") {
+            const avatar = document.createElement("div");
+            avatar.className = "msg-avatar";
+            avatar.textContent = "S";
+            row.appendChild(avatar);
+        }
+
+        const bubble = document.createElement("div");
+        bubble.className = "msg-bubble";
+        bubble.textContent = text;
+
+        const meta = document.createElement("div");
+        meta.className = "msg-meta";
+        meta.textContent = metaText || (role === "user" ? "You" : "Assistant");
+
+        bubble.appendChild(meta);
+        row.appendChild(bubble);
+        chatBody.appendChild(row);
+
+        chatBody.scrollTop = chatBody.scrollHeight;
+        return row;
+    }
+
+    function setLoading(isLoading) {
+        sendBtn.disabled = isLoading;
+        statusText.textContent = isLoading ? "Thinking…" : "Ready";
+    }
+
+    chatForm.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        const message = userInput.value.trim();
+        if (!message) return;
+
+        // User bubble
+        appendMessage("user", message, "You");
+
+        userInput.value = "";
+        autoResize();
+
+        // Temporary assistant "Thinking…" bubble
+        const thinkingRow    = appendMessage("bot", "Thinking…", "Assistant · typing");
+        const thinkingBubble = thinkingRow.querySelector(".msg-bubble").firstChild;
+        setLoading(true);
+
+        try {
+            const response = await fetch(CHAT_ENDPOINT, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message: message })
+            });
+
+            if (!response.ok) {
+                throw new Error("HTTP " + response.status);
+            }
+
+            const data = await response.json();
+            const answerText = (data.answer || "").toString().trim() || "I couldn't generate an answer.";
+
+            thinkingBubble.nodeValue = answerText;
+            thinkingRow.querySelector(".msg-meta").textContent = "Assistant";
+        } catch (err) {
+            thinkingBubble.nodeValue = "⚠️ Error calling the backend. Please try again.";
+            thinkingRow.querySelector(".msg-meta").textContent = "Error";
+            statusText.textContent = "Error";
+        } finally {
+            setLoading(false);
+            chatBody.scrollTop = chatBody.scrollHeight;
+        }
+    });
+</script>
+</body>
+</html>
